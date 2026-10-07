@@ -34,7 +34,7 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         val paused = recovered.copy(state = RecordingState.PAUSED)
         val points = withContext(Dispatchers.IO) { store.save(paused); store.points(paused.id) }
         segment = (points.maxOfOrNull { it.segment } ?: 0) + 1
-        mutable.value = RecordingSnapshot(paused, points, message = "Recovered route is paused. Resume when ready.")
+        mutable.value = RecordingSnapshot(paused, points, Statistics.calculate(points, paused.activeMillis), message = "Recovered route is paused. Resume when ready.")
     }
     suspend fun checkpoint() = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
@@ -42,7 +42,7 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         withContext(Dispatchers.IO) { store.save(updated) }
         startedElapsed = SystemClock.elapsedRealtime()
         mutable.value = mutable.value.copy(trail = updated,
-            statistics = mutable.value.statistics.copy(durationMillis = updated.activeMillis))
+            statistics = Statistics.calculate(mutable.value.points, updated.activeMillis))
     }
     suspend fun start(activity: ActivityType = ActivityType.WALKING) = mutex.withLock {
         if (mutable.value.trail != null) return@withLock
@@ -93,9 +93,12 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         val point = RoutePoint(location.latitude, location.longitude, location.time,
             if (location.hasAltitude() && location.altitude.isFinite()) location.altitude else null,
             if (location.hasAccuracy()) location.accuracy else null,
-            if (location.hasSpeed() && location.speed.isFinite() && location.speed >= 0) location.speed else null, segment)
+            if (location.hasSpeed() && location.speed.isFinite() && location.speed >= 0) location.speed else null, segment,
+            if (location.hasVerticalAccuracy() && location.verticalAccuracyMeters.isFinite() && location.verticalAccuracyMeters >= 0) location.verticalAccuracyMeters else null)
         withContext(Dispatchers.IO) { store.append(trail.id, point) }
-        mutable.value = mutable.value.copy(points = mutable.value.points + point, message = null)
+        val points = mutable.value.points + point
+        mutable.value = mutable.value.copy(points = points,
+            statistics = Statistics.calculate(points, elapsed(trail)), message = null)
     }
     private fun elapsed(trail: Trail) = trail.activeMillis +
         if (trail.state == RecordingState.RECORDING) (SystemClock.elapsedRealtime() - startedElapsed).coerceAtLeast(0) else 0L

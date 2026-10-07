@@ -6,7 +6,7 @@ enum class ActivityType { WALKING, HIKING, CYCLING }
 enum class RecordingState { IDLE, RECORDING, PAUSED }
 data class RoutePoint(val latitude: Double, val longitude: Double, val timestamp: Long,
     val altitude: Double? = null, val accuracy: Float? = null, val speed: Float? = null,
-    val segment: Int = 0)
+    val segment: Int = 0, val verticalAccuracy: Float? = null)
 data class RouteSegment(val index: Int, val points: List<RoutePoint>)
 data class RouteStatistics(val distanceMeters: Double = 0.0, val durationMillis: Long = 0,
     val averageSpeedKmh: Double = 0.0, val movingMillis: Long? = null,
