@@ -36,7 +36,7 @@ class RecordingService : Service() {
                     "START" -> app.engine.start(runCatching { ActivityType.valueOf(intent.getStringExtra("activity") ?: "WALKING") }.getOrDefault(ActivityType.WALKING))
                     "PAUSE" -> app.engine.pause()
                     "RESUME" -> app.engine.resume()
-                    "FINISH" -> app.engine.finish()
+                    "FINISH" -> { app.engine.finish(); app.repository.refresh() }
                 }
             }
             if (!ok || app.engine.snapshot.value.trail == null) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }

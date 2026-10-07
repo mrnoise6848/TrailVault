@@ -76,8 +76,8 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
     suspend fun finish() = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
         manager.removeUpdates(listener)
-        withContext(Dispatchers.IO) { store.save(trail.copy(state = RecordingState.IDLE,
-            activeMillis = elapsed(trail), endTime = System.currentTimeMillis())) }
+        withContext(Dispatchers.IO) { store.complete(trail.copy(state = RecordingState.IDLE,
+            activeMillis = elapsed(trail), endTime = System.currentTimeMillis()), store.points(trail.id)) }
         mutable.value = RecordingSnapshot()
     }
     private suspend fun accept(location: Location) = mutex.withLock {
