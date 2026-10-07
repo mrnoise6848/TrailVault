@@ -1,65 +1,48 @@
 # TrailVault
 
-**Record a walk or ride, keep the route locally, and export the actual points—not just the map preview.**
+**Record the route. Keep the record.**
 
-A route recorder can be useful without an account, feed or cloud library. The harder part is keeping an honest record when GPS fixes are poor, recording pauses, permissions disappear or Android interrupts the process. Connecting the last point to a new fix across those gaps can imply travel that was never observed.
+A walk or ride can be worth saving without posting it to a feed or creating a cloud account. TrailVault records GPS routes on Android, keeps them in a local library, and exports GPX so the record can travel with you.
 
-TrailVault records quality-filtered GPS points in local storage, separates route segments at pauses and gaps, and restores interrupted sessions paused. The workflow is **Record → Pause → Save → Review → Export**, with optional map tiles rather than a mandatory online service.
+Start a route, pause when you stop, and save it when you finish. Review the map and estimated distance, duration and speed; add a name, activity, notes or tags to make it easier to find later. Favorites and local search help turn recorded tracks into a usable history.
 
-## A route is more than a line
+## Recording through real interruptions
 
-- Accepted points are stored as recording progresses. Quality checks reject stale, inaccurate and implausible fixes.
-- Active duration excludes pauses; distance is calculated within segments. Speed and elevation are estimates, with unavailable values kept explicit.
-- Elevation gain requires qualified vertical accuracy and uses a 5 m hysteresis to suppress small altitude fluctuations. Imported altitude without quality does not become a confident gain estimate.
-- History supports titles, activities, notes, tags, favorites and local search. Metadata edits leave route geometry intact.
+GPS recording has gaps: poor fixes, pauses, lost permissions and process interruption. TrailVault preserves those boundaries in the route instead of connecting every point into one continuous trip.
 
-See [recording engine](app/src/main/java/com/noise/trailvault/recording/RecordingEngine.kt) and [statistics definitions](docs/statistics.md).
+A user-started location foreground service owns recording. Accepted fixes pass quality checks and are stored as they arrive. Pausing removes the GPS listener; resuming starts a new segment. Active duration excludes pauses. Permission/storage failures leave a paused route that can be recovered or finished later.
 
-## Recording and interrupted-session recovery
+After process death, reboot or force-stop, reopening restores the saved session **paused**. Recording does not restart unattended, and missing travel is not reconstructed. Duration checkpoints run every five seconds, so abrupt termination can lose the latest interval. [Recording engine](app/src/main/java/com/noise/trailvault/recording/RecordingEngine.kt) · [Recovery behavior](docs/failure-handling.md)
 
-```text
-Visible Start Route + precise-location permission
-    → location foreground service
-    → quality check → durable points + live statistics
-    → pause / finish, or interruption
-    → saved route, or recovered paused session
-```
+## A small map preview, a complete GPX
 
-A user-started foreground service can continue when the app is backgrounded or the screen is off, subject to Android and device restrictions. Pausing removes location listeners. Permission or storage failure pauses the route and surfaces a reason; failed completion leaves a paused route for retry.
+The live map uses at most 6,000 recent accepted points, and saved previews can be simplified. SQLite retains the route; GPX export streams its full point set, including segment boundaries and optional altitude. Rendering a manageable preview does not reduce the exported track.
 
-The service uses `START_NOT_STICKY`. Reopening after process death, reboot or force-stop restores saved state **paused**, with a new segment on resume. Missing travel is not reconstructed. Duration checkpoints occur every five seconds; abrupt termination can lose roughly the most recent checkpoint interval. See [failure handling](docs/failure-handling.md).
+GPX 1.0/1.1 track/route import supports multiple segments, validates coordinates and keeps unknown timestamps unknown. Imports are bounded at 16 MiB, 100,000 points and XML depth 32. Waypoint-only files are unsupported; multiple tracks become one route with separate segments. [GPX format and limits](docs/gpx.md)
 
-## Preview, storage and GPX have different jobs
+Distance and speed remain GPS estimates. Elevation gain requires qualified vertical accuracy and a 5 m hysteresis to suppress small fluctuations. [Statistics definitions](docs/statistics.md)
 
-SQLite retains the route points; live maps show at most 6,000 recent accepted points and saved previews are simplified. Export streams the full route from a cursor, preserving points, segment boundaries and optional altitude rather than serializing the simplified preview.
+## Take it for a short walk
 
-GPX 1.0/1.1 track/route import supports multiple segments, rejects DTD declarations and validates coordinates before storage. Limits are 16 MiB, 100,000 points and XML depth 32. Unknown timestamps stay unknown; waypoint-only files are unsupported. Multiple tracks become one route with separate segments. See [GPX contract](docs/gpx.md).
-
-The app uses a single Kotlin/Compose module: a repository handles local queries, the foreground service owns recording, and Activity launchers handle permissions and document picking. Platform location, SQLite and XML APIs supply the core workflow. [Architecture](docs/architecture.md), [performance bounds](docs/performance.md) and [decisions](docs/decisions/) explain the separation.
-
-## Try a short route first
-
-Use Android Studio and the configured toolchain, or:
+Android 10 / API 29 or newer, using the project's configured toolchain:
 
 ```bash
 ./gradlew :app:assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-On Android 10 / API 29 or newer, choose Start Route, allow precise location and optionally notifications, then move outdoors for GPS fixes. Pause/resume, turn the screen off during recording, and Finish & Save. Open My Routes, inspect the saved route, export GPX through the document picker and import it again.
+Choose Start Route, allow precise location and move outdoors for fixes. Try Pause/Resume and recording with the screen off, then Finish & Save. Open My Routes, inspect the details, export through the document picker and import the GPX again.
 
-Use a route suitable for public sharing if capturing the recording screen and saved-route details. No product screenshots are included yet.
+## Maps and local ownership
 
-## Local ownership and optional networking
+Online OpenStreetMap tiles are optional and off by default. Enabling them reveals the public IP and viewed areas to the tile service. Cached tiles are best-effort rather than a complete offline-map package. Route storage itself does not require online tiles.
 
-No account, analytics, location-upload service or backend is implemented. Route data is private and excluded from app backup/transfer. Export before uninstalling.
+Routes are excluded from app backup/transfer. There is no account, analytics or location-upload service; a chosen cloud document provider may upload an explicitly exported GPX. Export before uninstalling. [Privacy](docs/privacy.md)
 
-Online OpenStreetMap tiles are off by default. Enabling them discloses the public IP and viewed areas to the tile service; a chosen cloud document provider may upload an explicitly exported GPX. Cached tiles are best-effort, not a complete offline-map package. See [privacy](docs/privacy.md).
+## Implementation status
 
-## Evidence and remaining limits
+The [build record](docs/implementation-report.md) reports successful compilation and debug packaging. Device GPS, background/lifecycle, battery and visual validation remain pending; no runtime or performance result is claimed. Android/device restrictions can affect background recording.
 
-The [implementation report](docs/implementation-report.md) records successful Kotlin compilation and debug packaging. It explicitly states that device GPS, lifecycle, permission, battery and visual behavior have not been runtime-validated. Existing tests are templates; no substantive test or benchmark evidence is supplied. This documentation pass did not change that status.
+The single Compose module separates recording service, repository and UI; platform location, SQLite and XML APIs support the core workflow. [Architecture](docs/architecture.md) · [Performance bounds](docs/performance.md)
 
-Update cadence and bounded previews are implementation settings, not measured battery/performance results. osmdroid 6.1.20 is an archived upstream dependency that needs reassessment for long-term distribution. Device validation and maintained map-provider evaluation remain the main next steps.
-
-No project source license has been selected. Map/library obligations are recorded in [third-party notices](app/src/main/assets/third_party_notices.txt).
+The archived osmdroid dependency needs reassessment for long-term distribution. No project source license is selected; [third-party notices](app/src/main/assets/third_party_notices.txt) cover library/map obligations.
