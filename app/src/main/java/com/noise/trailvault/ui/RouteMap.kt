@@ -6,7 +6,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleOwner
 import com.noise.trailvault.domain.RoutePoint
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -21,7 +21,7 @@ import org.osmdroid.views.overlay.CopyrightOverlay
 fun RouteMap(points: List<RoutePoint>, modifier: Modifier = Modifier, follow: Boolean = true,
     online: Boolean = false) {
     val context = LocalContext.current
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycle = (context as LifecycleOwner).lifecycle
     val map = remember(context) {
         Configuration.getInstance().apply {
             userAgentValue = "TrailVault/1.0 (${context.packageName})"
