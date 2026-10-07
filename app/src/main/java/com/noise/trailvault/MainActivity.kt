@@ -14,6 +14,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.noise.trailvault.data.Gpx
 import androidx.compose.ui.Modifier
 import com.noise.trailvault.domain.*
 import com.noise.trailvault.recording.*
@@ -40,6 +43,21 @@ class MainActivity : ComponentActivity() {
         val error by app.error.collectAsState()
         var explain by remember { mutableStateOf(false) }
         var requestedActivity by remember { mutableStateOf(ActivityType.WALKING) }
+        var exportId by rememberSaveable { mutableStateOf<String?>(null) }
+        val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri ->
+            val id = exportId
+            exportId = null
+            if (uri != null && id != null) app.scope.launch {
+                app.perform {
+                    val route = app.repository.detail(id)
+                    withContext(Dispatchers.IO) {
+                        requireNotNull(contentResolver.openOutputStream(uri, "wt")) { "Cannot open destination" }.use {
+                            Gpx.write(it, route.first, route.second)
+                        }
+                    }
+                }
+            }
+        }
         val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         fun command(action: String) {
             try {
@@ -68,7 +86,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { selectedId = null; page = "history" },
                         onUpdate = { app.scope.launch { app.perform { app.repository.update(it) } } },
                         onDelete = { app.scope.launch { if (app.perform { app.repository.delete(current.first.id) }) { selectedId = null; page = "history" } } },
-                        onExport = { app.error.value = "Choose a destination to export this route as GPX." })
+                        onExport = { exportId = current.first.id; export.launch(Gpx.filename(current.first)) })
                 } else RecordingScreen(snapshot,
                     onStart = { requestedActivity = it; explain = true },
                     onPause = { command("PAUSE") }, onResume = { command("RESUME") },
