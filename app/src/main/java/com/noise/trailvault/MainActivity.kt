@@ -33,6 +33,10 @@ class MainActivity : ComponentActivity() {
         val history by app.repository.history.collectAsState()
         var page by rememberSaveable { mutableStateOf("recording") }
         var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+        val detail by produceState<Pair<Trail, List<RoutePoint>>?>(null, selectedId, history) {
+            value = null
+            selectedId?.let { id -> app.perform { value = app.repository.detail(id) } }
+        }
         val error by app.error.collectAsState()
         var explain by remember { mutableStateOf(false) }
         var requestedActivity by remember { mutableStateOf(ActivityType.WALKING) }
@@ -54,7 +58,18 @@ class MainActivity : ComponentActivity() {
                     onOpen = { selectedId = it; page = "detail" },
                     onUpdate = { app.scope.launch { app.perform { app.repository.update(it) } } },
                     onDelete = { app.scope.launch { app.perform { app.repository.delete(it) } } })
-                else RecordingScreen(snapshot,
+                else if (page == "detail") {
+                    val current = detail
+                    if (current == null) Column {
+                        TextButton(onClick = { page = "history" }) { Text("← My Routes") }
+                        Text("Loading route…")
+                    } else DetailScreen(current.first, current.second,
+                        history.firstOrNull { it.trail.id == current.first.id }?.statistics ?: RouteStatistics(),
+                        onBack = { selectedId = null; page = "history" },
+                        onUpdate = { app.scope.launch { app.perform { app.repository.update(it) } } },
+                        onDelete = { app.scope.launch { if (app.perform { app.repository.delete(current.first.id) }) { selectedId = null; page = "history" } } },
+                        onExport = { app.error.value = "Choose a destination to export this route as GPX." })
+                } else RecordingScreen(snapshot,
                     onStart = { requestedActivity = it; explain = true },
                     onPause = { command("PAUSE") }, onResume = { command("RESUME") },
                     onFinish = { command("FINISH") }, onHistory = { page = "history"; app.scope.launch { app.perform { app.repository.refresh() } } })
