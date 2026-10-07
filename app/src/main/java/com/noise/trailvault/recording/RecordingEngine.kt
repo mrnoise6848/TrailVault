@@ -66,10 +66,17 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
     private suspend fun accept(location: Location) = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
         if (trail.state != RecordingState.RECORDING) return@withLock
+        val previous = mutable.value.points.lastOrNull()?.takeIf { it.segment == segment }
+        val rejection = LocationQuality.rejection(location, previous)
+        if (rejection != null) {
+            mutable.value = mutable.value.copy(message = rejection)
+            return@withLock
+        }
+        if (previous != null && location.time - previous.timestamp > 60_000) segment++
         val point = RoutePoint(location.latitude, location.longitude, location.time,
-            if (location.hasAltitude()) location.altitude else null,
+            if (location.hasAltitude() && location.altitude.isFinite()) location.altitude else null,
             if (location.hasAccuracy()) location.accuracy else null,
-            if (location.hasSpeed()) location.speed else null, segment)
+            if (location.hasSpeed() && location.speed.isFinite() && location.speed >= 0) location.speed else null, segment)
         withContext(Dispatchers.IO) { store.append(trail.id, point) }
         mutable.value = mutable.value.copy(points = mutable.value.points + point, message = null)
     }
