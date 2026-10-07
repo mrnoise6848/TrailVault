@@ -25,7 +25,7 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
     private var fixStartNanos = 0L
     private var segment = 0
     private var accumulator = StatisticsAccumulator()
-    private val listener = object : LocationListener {
+    private val listener: LocationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) { scope.launch {
             try { accept(location) } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { interrupt("Recording paused: unable to store a GPS point. Check available storage and permissions, then retry.") }
@@ -55,9 +55,10 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
     }
     suspend fun checkpoint() = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
-        val updated = trail.copy(activeMillis = elapsed(trail))
+        val checkpointElapsed = SystemClock.elapsedRealtime()
+        val updated = trail.copy(activeMillis = elapsed(trail, checkpointElapsed))
         withContext(Dispatchers.IO) { store.save(updated) }
-        startedElapsed = SystemClock.elapsedRealtime()
+        startedElapsed = checkpointElapsed
         mutable.value = mutable.value.copy(trail = updated,
             statistics = accumulator.snapshot(updated.activeMillis))
     }
@@ -121,8 +122,8 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         mutable.value = mutable.value.copy(points = points,
             statistics = accumulator.snapshot(elapsed(trail)), message = null)
     }
-    private fun elapsed(trail: Trail) = trail.activeMillis +
-        if (trail.state == RecordingState.RECORDING) (SystemClock.elapsedRealtime() - startedElapsed).coerceAtLeast(0) else 0L
+    private fun elapsed(trail: Trail, now: Long = SystemClock.elapsedRealtime()) = trail.activeMillis +
+        if (trail.state == RecordingState.RECORDING) (now - startedElapsed).coerceAtLeast(0) else 0L
     @SuppressLint("MissingPermission")
     private fun subscribe() {
         fixStartNanos = SystemClock.elapsedRealtimeNanos()

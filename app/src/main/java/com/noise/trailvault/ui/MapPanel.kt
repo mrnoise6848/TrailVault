@@ -8,12 +8,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import com.noise.trailvault.domain.RoutePoint
 
 @Composable
 fun MapPanel(points: List<RoutePoint>, follow: Boolean) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val preferences = remember { context.getSharedPreferences("map_privacy", Context.MODE_PRIVATE) }
     var online by remember { mutableStateOf(preferences.getBoolean("online", false)) }
     var explain by remember { mutableStateOf(false) }
@@ -37,6 +39,7 @@ fun MapPanel(points: List<RoutePoint>, follow: Boolean) {
     Text("Route data is stored offline. ${if (!online || !connected) "Only cached map tiles are available; missing tiles appear blank." else "Map tiles need internet and may be unavailable."}",
         style = MaterialTheme.typography.bodySmall)
     RouteMap(points, Modifier.fillMaxWidth().height(300.dp), follow, online && connected)
+    TextButton(onClick = { uriHandler.openUri("https://www.openstreetmap.org/copyright") }) { Text("© OpenStreetMap contributors") }
     if (explain) AlertDialog(onDismissRequest = { explain = false },
         title = { Text("Enable online maps?") },
         text = { Text("OpenStreetMap receives your IP address and the map areas you view when tiles are requested. Your recorded track is kept on this device. Cached tiles may work offline; complete offline maps are not provided.") },

@@ -11,3 +11,8 @@ bounded to 16 MiB/100,000 points and uses one transaction. History uses cached s
 SQLite operations and GPX run on IO. Map cache bounded to 64 MiB; no tile prefetch.
 Long route history is a metadata list, not an in-memory collection of all track coordinates.
 Physical-device battery profiling and runtime validation are still required before release.
+
+UI flow collection suspends below STARTED using the existing lifecycle-runtime dependency.
+Turning follow mode off preserves the user's camera while new points arrive. Preview
+sampling never alters durable points. UI document jobs belong to composition lifetime;
+recording belongs to application/service lifetime. No coordinate/debug log output is added.

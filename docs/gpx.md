@@ -14,3 +14,9 @@ nonfinite coordinates, malformed altitude/time, invalid XML and empty documents 
 before a database transaction. Missing timestamps remain unknown (zero sentinel internally);
 export omits them, timing metrics stay unavailable when none exist. GPX waypoint-only files
 are unsupported. Multiple tracks are combined as segments, retaining the first name.
+
+Final review: core fields must match the GPX root namespace and points must have valid
+track-segment/route parents. Timing-derived duration is unavailable with missing or unordered
+point times. A validated TrailVault duration extension (0–365 days) can supply active duration
+independently of point timestamp availability. Metadata edits never replace route geometry.
+The full-route exporter streams a SQLite cursor rather than exporting the sampled map preview.

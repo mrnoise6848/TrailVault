@@ -1,0 +1,8 @@
+TrailVault uses osmdroid 6.1.20 (https://github.com/osmdroid/osmdroid).
+Copyright the osmdroid contributors. Licensed under the Apache License, Version 2.0.
+The license is bundled as osmdroid-LICENSE.txt. No upstream source files were copied.
+
+Map data: © OpenStreetMap contributors, https://www.openstreetmap.org/copyright
+OpenStreetMap data is available under the Open Database License.
+Standard map tiles are subject to https://operations.osmfoundation.org/policies/tiles/.
+Online map access is optional and off by default.

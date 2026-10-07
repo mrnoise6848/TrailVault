@@ -39,11 +39,12 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun TrailRoot() {
         val app = application as TrailApplication
-        val snapshot by app.engine.snapshot.collectAsState()
-        val history by app.repository.history.collectAsState()
+        val uiScope = rememberCoroutineScope()
+        val snapshot by app.engine.snapshot.collectWhileStarted()
+        val history by app.repository.history.collectWhileStarted()
         var page by rememberSaveable { mutableStateOf("recording") }
         var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
-        val completedId by app.completedId.collectAsState()
+        val completedId by app.completedId.collectWhileStarted()
         LaunchedEffect(completedId) {
             completedId?.let { selectedId = it; page = "detail"; app.completedId.value = null }
         }
@@ -51,8 +52,8 @@ class MainActivity : ComponentActivity() {
             value = null
             selectedId?.let { id -> app.perform { value = app.repository.detail(id) } }
         }
-        val error by app.error.collectAsState()
-        var explain by remember { mutableStateOf(false) }
+        val error by app.error.collectWhileStarted()
+        var explain by rememberSaveable { mutableStateOf(false) }
         var pendingAction by rememberSaveable { mutableStateOf("START") }
         var busy by remember { mutableStateOf(false) }
         var notice by remember { mutableStateOf<String?>(null) }
@@ -61,7 +62,7 @@ class MainActivity : ComponentActivity() {
         val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri ->
             val id = exportId
             exportId = null
-            if (uri != null && id != null) app.scope.launch {
+            if (uri != null && id != null) uiScope.launch {
                 busy = true
                 val success = app.perform {
                     withContext(Dispatchers.IO) {
@@ -75,7 +76,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         val importGpx = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) app.scope.launch {
+            if (uri != null) uiScope.launch {
                 busy = true
                 app.perform {
                     val imported = withContext(Dispatchers.IO) {
@@ -88,6 +89,18 @@ class MainActivity : ComponentActivity() {
             }
         }
         fun command(action: String) {
+            if (!LocationPermission.granted(this@MainActivity) && action in listOf("PAUSE", "FINISH")) {
+                app.scope.launch {
+                    val ok = app.perform {
+                        if (action == "FINISH") {
+                            val id = app.engine.snapshot.value.trail?.id
+                            app.engine.finish(); app.repository.refresh(); app.completedId.value = id
+                        } else app.engine.pause()
+                    }
+                    if (ok) app.stopService(Intent(app, RecordingService::class.java))
+                }
+                return
+            }
             try {
                 val intent = Intent(this@MainActivity, RecordingService::class.java).setAction(action)
                     .putExtra("activity", requestedActivity.name)
@@ -113,8 +126,8 @@ class MainActivity : ComponentActivity() {
             Box(Modifier.padding(padding)) {
                 if (page == "history") HistoryScreen(history, onImport = { importGpx.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "application/octet-stream", "*/*")) }, onBack = { page = "recording" },
                     onOpen = { selectedId = it; page = "detail" },
-                    onUpdate = { app.scope.launch { app.perform { app.repository.update(it) } } },
-                    onDelete = { app.scope.launch { app.perform { app.repository.delete(it) } } })
+                    onUpdate = { uiScope.launch { app.perform { app.repository.update(it) } } },
+                    onDelete = { uiScope.launch { app.perform { app.repository.delete(it) } } })
                 else if (page == "detail") {
                     val current = detail
                     if (current == null) Column {
@@ -123,8 +136,8 @@ class MainActivity : ComponentActivity() {
                     } else DetailScreen(current.first, current.second,
                         history.firstOrNull { it.trail.id == current.first.id }?.statistics ?: RouteStatistics(),
                         onBack = { selectedId = null; page = "history" },
-                        onUpdate = { app.scope.launch { app.perform { app.repository.update(it) } } },
-                        onDelete = { app.scope.launch { if (app.perform { app.repository.delete(current.first.id) }) { selectedId = null; page = "history" } } },
+                        onUpdate = { uiScope.launch { app.perform { app.repository.update(it) } } },
+                        onDelete = { uiScope.launch { if (app.perform { app.repository.delete(current.first.id) }) { selectedId = null; page = "history" } } },
                         onExport = { exportId = current.first.id; export.launch(Gpx.filename(current.first)) })
                 } else RecordingScreen(snapshot,
                     onStart = { pendingAction = "START"; requestedActivity = it; explain = true },

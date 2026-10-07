@@ -31,7 +31,8 @@ class TrailApplication : Application() {
         error.value = when (exception) {
             is android.database.sqlite.SQLiteFullException -> "Storage is full. Free space and retry; the prior saved route is retained."
             is SecurityException -> "Access was denied. Restore location permission or choose an accessible document, then retry."
-            is IllegalArgumentException, is org.xmlpull.v1.XmlPullParserException, is java.time.format.DateTimeParseException -> "Invalid or unsupported GPX/data. Check the selected file and try again."
+            is java.time.format.DateTimeParseException, is org.xmlpull.v1.XmlPullParserException -> "Invalid GPX timestamp or XML. Check the selected file and try again."
+            is IllegalArgumentException -> "Invalid or unsupported data: ${exception.message?.take(160) ?: "check the selected GPX file"}."
             is java.io.IOException -> "Unable to read or write the document. Check the destination and available storage, then retry."
             else -> "Operation failed (${exception.javaClass.simpleName}). Your saved data is retained. Check permissions and available storage, then retry."
         }

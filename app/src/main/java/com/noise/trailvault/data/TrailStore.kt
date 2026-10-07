@@ -37,11 +37,12 @@ class TrailStore(context: Context) : SQLiteOpenHelper(context, "trails.db", null
             save(trail)
             val accumulator = accumulator(trail.id)
             val stats = accumulator.snapshot(trail.activeMillis)
-            db.insertWithOnConflict("statistics", null, ContentValues().apply {
+            val row = db.insertWithOnConflict("statistics", null, ContentValues().apply {
                 put("trail", trail.id); put("distance", stats.distanceMeters); put("duration", stats.durationMillis)
                 put("average", stats.averageSpeedKmh); put("moving", stats.movingMillis)
                 put("elevation", stats.elevationGainMeters); put("count", accumulator.count)
             }, SQLiteDatabase.CONFLICT_REPLACE)
+            check(row != -1L) { "Unable to store route statistics" }
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
@@ -65,6 +66,13 @@ class TrailStore(context: Context) : SQLiteOpenHelper(context, "trails.db", null
         db.beginTransaction()
         try { save(trail); points.forEach { append(trail.id, it) }; complete(trail); db.setTransactionSuccessful() }
         finally { db.endTransaction() }
+    }
+    fun updateMetadata(trail: Trail) {
+        val values = ContentValues().apply {
+            put("name", trail.name); put("activity", trail.activity.name); put("notes", trail.notes)
+            put("tags", trail.tags); put("favorite", if (trail.favorite) 1 else 0)
+        }
+        check(writableDatabase.update("trails", values, "id=? AND state='IDLE'", arrayOf(trail.id)) == 1) { "Saved route no longer exists" }
     }
     fun save(trail: Trail) {
         val values = ContentValues().apply {

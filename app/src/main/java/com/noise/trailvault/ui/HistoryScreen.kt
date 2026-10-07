@@ -42,19 +42,19 @@ fun HistoryScreen(routes: List<TrackSummary>, onBack: () -> Unit, onOpen: (Strin
         OutlinedButton(onClick = onImport) { Text("Import GPX") }
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(query, { query = it.take(160) }, label = { Text("Search name, activity or tags") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(selected = favorites, onClick = { favorites = !favorites }, label = { Text("Favorites") })
-            FilterChip(selected = recent, onClick = { recent = !recent }, label = { Text("Last 30 days") })
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ActivityType.entries.forEach { type -> FilterChip(selected = activity == type,
-                onClick = { activity = if (activity == type) null else type }, label = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
-        }
-        if (routes.isNotEmpty() && filtered.isEmpty()) Text("No routes match your filters.")
-        if (routes.isEmpty()) Text("Your routes belong here. Record your first route to get started.")
-            }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(query, { query = it.take(160) }, label = { Text("Search name, activity or tags") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = favorites, onClick = { favorites = !favorites }, label = { Text("Favorites") })
+                        FilterChip(selected = recent, onClick = { recent = !recent }, label = { Text("Last 30 days") })
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ActivityType.entries.forEach { type -> FilterChip(selected = activity == type,
+                            onClick = { activity = if (activity == type) null else type }, label = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
+                    }
+                    if (routes.isNotEmpty() && filtered.isEmpty()) Text("No routes match your filters.")
+                    if (routes.isEmpty()) Text("Your routes belong here. Record your first route to get started.")
+                }
             }
             items(filtered, key = { it.trail.id }) { summary ->
                 val trail = summary.trail

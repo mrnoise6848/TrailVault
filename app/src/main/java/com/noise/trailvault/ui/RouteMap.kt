@@ -22,6 +22,7 @@ fun RouteMap(points: List<RoutePoint>, modifier: Modifier = Modifier, follow: Bo
     online: Boolean = false) {
     val context = LocalContext.current
     val lifecycle = (context as LifecycleOwner).lifecycle
+    var positioned by remember { mutableStateOf(false) }
     val map = remember(context) {
         Configuration.getInstance().apply {
             userAgentValue = "TrailVault/1.0 (${context.packageName})"
@@ -65,9 +66,15 @@ fun RouteMap(points: List<RoutePoint>, modifier: Modifier = Modifier, follow: Bo
                 title = "Last recorded position"
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
             })
-            if (follow) map.controller.animateTo(GeoPoint(last.latitude, last.longitude))
-            else if (points.size > 1) map.post {
-                if (map.width > 0) map.zoomToBoundingBox(BoundingBox.fromGeoPoints(display.map { GeoPoint(it.latitude, it.longitude) }), false, 48)
+            if (follow) {
+                positioned = true
+                map.controller.animateTo(GeoPoint(last.latitude, last.longitude))
+            } else if (!positioned) {
+                positioned = true
+                if (points.size == 1) map.controller.setCenter(GeoPoint(last.latitude, last.longitude))
+                else map.post {
+                    if (map.width > 0) map.zoomToBoundingBox(BoundingBox.fromGeoPoints(display.map { GeoPoint(it.latitude, it.longitude) }), false, 48)
+                }
             }
         }
         map.invalidate()
