@@ -12,6 +12,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import com.noise.trailvault.domain.*
 import com.noise.trailvault.recording.*
@@ -28,6 +30,9 @@ class MainActivity : ComponentActivity() {
     private fun TrailRoot() {
         val app = application as TrailApplication
         val snapshot by app.engine.snapshot.collectAsState()
+        val history by app.repository.history.collectAsState()
+        var page by rememberSaveable { mutableStateOf("recording") }
+        var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
         val error by app.error.collectAsState()
         var explain by remember { mutableStateOf(false) }
         var requestedActivity by remember { mutableStateOf(ActivityType.WALKING) }
@@ -45,10 +50,14 @@ class MainActivity : ComponentActivity() {
         }
         Scaffold { padding ->
             Box(Modifier.padding(padding)) {
-                RecordingScreen(snapshot,
+                if (page == "history") HistoryScreen(history, onBack = { page = "recording" },
+                    onOpen = { selectedId = it; page = "detail" },
+                    onUpdate = { app.scope.launch { app.perform { app.repository.update(it) } } },
+                    onDelete = { app.scope.launch { app.perform { app.repository.delete(it) } } })
+                else RecordingScreen(snapshot,
                     onStart = { requestedActivity = it; explain = true },
                     onPause = { command("PAUSE") }, onResume = { command("RESUME") },
-                    onFinish = { command("FINISH") }, onHistory = { app.error.value = "Your completed routes will appear in My Routes." })
+                    onFinish = { command("FINISH") }, onHistory = { page = "history"; app.scope.launch { app.perform { app.repository.refresh() } } })
             }
         }
         if (explain) AlertDialog(onDismissRequest = { explain = false },
