@@ -58,6 +58,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        val importGpx = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) app.scope.launch {
+                app.perform {
+                    val imported = withContext(Dispatchers.IO) {
+                        requireNotNull(contentResolver.openInputStream(uri)) { "Cannot open GPX" }.use(Gpx::read)
+                    }
+                    app.repository.importRoute(imported.trail, imported.points)
+                    selectedId = imported.trail.id; page = "detail"
+                }
+            }
+        }
         val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         fun command(action: String) {
             try {
@@ -72,7 +83,7 @@ class MainActivity : ComponentActivity() {
         }
         Scaffold { padding ->
             Box(Modifier.padding(padding)) {
-                if (page == "history") HistoryScreen(history, onBack = { page = "recording" },
+                if (page == "history") HistoryScreen(history, onImport = { importGpx.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "application/octet-stream", "*/*")) }, onBack = { page = "recording" },
                     onOpen = { selectedId = it; page = "detail" },
                     onUpdate = { app.scope.launch { app.perform { app.repository.update(it) } } },
                     onDelete = { app.scope.launch { app.perform { app.repository.delete(it) } } })

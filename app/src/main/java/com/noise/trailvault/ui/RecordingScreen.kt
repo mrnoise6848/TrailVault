@@ -19,7 +19,7 @@ fun durationLabel(millis: Long): String {
 fun StatisticsView(statistics: RouteStatistics) {
     Text("%.2f km".format(Locale.getDefault(), statistics.distanceMeters / 1000), style = MaterialTheme.typography.headlineLarge)
     Text("Active duration  ${durationLabel(statistics.durationMillis)}")
-    Text("Average speed  %.1f km/h".format(Locale.getDefault(), statistics.averageSpeedKmh))
+    Text("Average speed  " + if (statistics.durationMillis > 0) "%.1f km/h".format(Locale.getDefault(), statistics.averageSpeedKmh) else "Unavailable")
     Text("Moving time  ${statistics.movingMillis?.let(::durationLabel) ?: "Unavailable"}")
     Text("Elevation gain  ${statistics.elevationGainMeters?.let { "≈ %.0f m".format(it) } ?: "Unavailable"}")
 }

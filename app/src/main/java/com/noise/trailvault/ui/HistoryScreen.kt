@@ -18,12 +18,13 @@ fun dateLabel(time: Long): String = DateTimeFormatter.ofPattern("MMM d, yyyy · 
 
 @Composable
 fun HistoryScreen(routes: List<TrackSummary>, onBack: () -> Unit, onOpen: (String) -> Unit,
-    onUpdate: (Trail) -> Unit, onDelete: (String) -> Unit) {
+    onUpdate: (Trail) -> Unit, onDelete: (String) -> Unit, onImport: () -> Unit) {
     var rename by remember { mutableStateOf<Trail?>(null) }
     var deleting by remember { mutableStateOf<Trail?>(null) }
     Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextButton(onClick = onBack) { Text("← Recording") }
         Text("My Routes", style = MaterialTheme.typography.headlineLarge)
+        OutlinedButton(onClick = onImport) { Text("Import GPX") }
         if (routes.isEmpty()) Text("Your routes belong here. Record your first route to get started.")
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(routes, key = { it.trail.id }) { summary ->
