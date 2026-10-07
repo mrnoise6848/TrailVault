@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.noise.trailvault.domain.*
@@ -19,15 +20,37 @@ fun dateLabel(time: Long): String = DateTimeFormatter.ofPattern("MMM d, yyyy · 
 @Composable
 fun HistoryScreen(routes: List<TrackSummary>, onBack: () -> Unit, onOpen: (String) -> Unit,
     onUpdate: (Trail) -> Unit, onDelete: (String) -> Unit, onImport: () -> Unit) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var activity by rememberSaveable { mutableStateOf<ActivityType?>(null) }
+    var favorites by rememberSaveable { mutableStateOf(false) }
+    var recent by rememberSaveable { mutableStateOf(false) }
+    val filtered = remember(routes, query, activity, favorites, recent) {
+        val cutoff = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+        routes.filter { summary ->
+            val trail = summary.trail
+            (query.isBlank() || listOf(trail.name, trail.tags, trail.activity.name).any { it.contains(query.trim(), ignoreCase = true) }) &&
+                (activity == null || trail.activity == activity) && (!favorites || trail.favorite) && (!recent || trail.startTime >= cutoff)
+        }
+    }
     var rename by remember { mutableStateOf<Trail?>(null) }
     var deleting by remember { mutableStateOf<Trail?>(null) }
     Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextButton(onClick = onBack) { Text("← Recording") }
         Text("My Routes", style = MaterialTheme.typography.headlineLarge)
         OutlinedButton(onClick = onImport) { Text("Import GPX") }
+        OutlinedTextField(query, { query = it.take(160) }, label = { Text("Search name, activity or tags") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = favorites, onClick = { favorites = !favorites }, label = { Text("Favorites") })
+            FilterChip(selected = recent, onClick = { recent = !recent }, label = { Text("Last 30 days") })
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ActivityType.entries.forEach { type -> FilterChip(selected = activity == type,
+                onClick = { activity = if (activity == type) null else type }, label = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
+        }
+        if (routes.isNotEmpty() && filtered.isEmpty()) Text("No routes match your filters.")
         if (routes.isEmpty()) Text("Your routes belong here. Record your first route to get started.")
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(routes, key = { it.trail.id }) { summary ->
+            items(filtered, key = { it.trail.id }) { summary ->
                 val trail = summary.trail
                 Column(Modifier.fillMaxWidth().clickable { onOpen(trail.id) }.padding(vertical = 12.dp)) {
                     Text((if (trail.favorite) "★ " else "") + trail.name, style = MaterialTheme.typography.titleLarge)
