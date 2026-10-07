@@ -14,6 +14,7 @@ fun DetailScreen(trail: Trail, points: List<RoutePoint>, statistics: RouteStatis
     onBack: () -> Unit, onUpdate: (Trail) -> Unit, onDelete: () -> Unit,
     onExport: () -> Unit) {
     var rename by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -29,12 +30,14 @@ fun DetailScreen(trail: Trail, points: List<RoutePoint>, statistics: RouteStatis
         if (trail.tags.isNotBlank()) Text("Tags  ${trail.tags}")
         if (trail.notes.isNotBlank()) Text(trail.notes)
         Button(onClick = onExport, enabled = points.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Export GPX") }
+        OutlinedButton(onClick = { editing = true }) { Text("Edit activity, tags & notes") }
         Row {
             TextButton(onClick = { rename = true }) { Text("Rename") }
             TextButton(onClick = { onUpdate(trail.copy(favorite = !trail.favorite)) }) { Text(if (trail.favorite) "★ Favorited" else "Favorite") }
             TextButton(onClick = { deleting = true }) { Text("Delete") }
         }
     }
+    if (editing) MetadataDialog(trail, { editing = false }) { onUpdate(it); editing = false }
     if (rename) RenameDialog(trail, { rename = false }) { onUpdate(it); rename = false }
     if (deleting) DeleteDialog(trail, { deleting = false }) { deleting = false; onDelete() }
 }

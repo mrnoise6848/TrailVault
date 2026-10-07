@@ -16,6 +16,7 @@ class TrailRepository(private val store: TrailStore) {
     }
     suspend fun update(trail: Trail) {
         require(trail.name.isNotBlank() && trail.name.length <= 160)
+        require(trail.notes.length <= 4000 && trail.tags.length <= 500)
         withContext(Dispatchers.IO) { store.save(trail.copy(name = trail.name.trim())) }
         refresh()
     }
