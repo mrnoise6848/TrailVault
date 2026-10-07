@@ -22,7 +22,7 @@ fun DetailScreen(trail: Trail, points: List<RoutePoint>, statistics: RouteStatis
         Text(trail.activity.name.lowercase().replaceFirstChar { it.uppercase() })
         StatisticsView(statistics)
         if (points.isEmpty()) Text("No GPS points were recorded for this route.")
-        else RouteMap(points, Modifier.fillMaxWidth().height(320.dp), follow = false)
+        else MapPanel(points, follow = false)
         Text("Started  ${if (points.any { it.timestamp > 0 }) dateLabel(trail.startTime) else "Unavailable (imported)"}")
         Text("Finished  ${trail.endTime?.let(::dateLabel) ?: "Unavailable"}")
         Text("${points.size} recorded points")
