@@ -28,11 +28,28 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         override fun onProviderDisabled(provider: String) { mutable.value = mutable.value.copy(message = "GPS is unavailable. Enable location services; your route is retained.") }
         override fun onProviderEnabled(provider: String) { mutable.value = mutable.value.copy(message = null) }
     }
+    suspend fun recover() = mutex.withLock {
+        if (mutable.value.trail != null) return@withLock
+        val recovered = withContext(Dispatchers.IO) { store.active() } ?: return@withLock
+        val paused = recovered.copy(state = RecordingState.PAUSED)
+        val points = withContext(Dispatchers.IO) { store.save(paused); store.points(paused.id) }
+        segment = (points.maxOfOrNull { it.segment } ?: 0) + 1
+        mutable.value = RecordingSnapshot(paused, points, message = "Recovered route is paused. Resume when ready.")
+    }
+    suspend fun checkpoint() = mutex.withLock {
+        val trail = mutable.value.trail ?: return@withLock
+        val updated = trail.copy(activeMillis = elapsed(trail))
+        withContext(Dispatchers.IO) { store.save(updated) }
+        startedElapsed = SystemClock.elapsedRealtime()
+        mutable.value = mutable.value.copy(trail = updated,
+            statistics = mutable.value.statistics.copy(durationMillis = updated.activeMillis))
+    }
     suspend fun start(activity: ActivityType = ActivityType.WALKING) = mutex.withLock {
         if (mutable.value.trail != null) return@withLock
         check(LocationPermission.granted(context)) { "Precise location access is required." }
         val trail = Trail(name = "Route ${java.time.LocalDate.now()}", activity = activity, state = RecordingState.RECORDING)
         withContext(Dispatchers.IO) { check(store.active() == null) { "Recover the existing route first." }; store.save(trail) }
+        segment = 0
         mutable.value = RecordingSnapshot(trail)
         startedElapsed = SystemClock.elapsedRealtime()
         subscribe()
