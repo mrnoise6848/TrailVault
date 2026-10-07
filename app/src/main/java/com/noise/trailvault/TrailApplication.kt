@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 class TrailApplication : Application() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val completedId = MutableStateFlow<String?>(null)
     val error = MutableStateFlow<String?>(null)
     lateinit var store: TrailStore
         private set

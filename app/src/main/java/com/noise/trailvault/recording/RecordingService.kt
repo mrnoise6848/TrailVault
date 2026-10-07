@@ -57,7 +57,7 @@ class RecordingService : Service() {
                     "START" -> app.engine.start(runCatching { ActivityType.valueOf(intent.getStringExtra("activity") ?: "WALKING") }.getOrDefault(ActivityType.WALKING))
                     "PAUSE" -> app.engine.pause()
                     "RESUME" -> app.engine.resume()
-                    "FINISH" -> { app.engine.finish(); app.repository.refresh() }
+                    "FINISH" -> { val id = app.engine.snapshot.value.trail?.id; app.engine.finish(); app.repository.refresh(); app.completedId.value = id }
                 }
             }
             if (!ok) app.engine.interrupt("Recording paused after an operation failed. Your route is retained; check storage and permissions.")

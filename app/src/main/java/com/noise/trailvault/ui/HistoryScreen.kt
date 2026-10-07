@@ -1,6 +1,8 @@
 package com.noise.trailvault.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,25 +40,29 @@ fun HistoryScreen(routes: List<TrackSummary>, onBack: () -> Unit, onOpen: (Strin
         TextButton(onClick = onBack) { Text("← Recording") }
         Text("My Routes", style = MaterialTheme.typography.headlineLarge)
         OutlinedButton(onClick = onImport) { Text("Import GPX") }
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(query, { query = it.take(160) }, label = { Text("Search name, activity or tags") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             FilterChip(selected = favorites, onClick = { favorites = !favorites }, label = { Text("Favorites") })
             FilterChip(selected = recent, onClick = { recent = !recent }, label = { Text("Last 30 days") })
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ActivityType.entries.forEach { type -> FilterChip(selected = activity == type,
                 onClick = { activity = if (activity == type) null else type }, label = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
         }
         if (routes.isNotEmpty() && filtered.isEmpty()) Text("No routes match your filters.")
         if (routes.isEmpty()) Text("Your routes belong here. Record your first route to get started.")
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            }
+            }
             items(filtered, key = { it.trail.id }) { summary ->
                 val trail = summary.trail
                 Column(Modifier.fillMaxWidth().clickable { onOpen(trail.id) }.padding(vertical = 12.dp)) {
                     Text((if (trail.favorite) "★ " else "") + trail.name, style = MaterialTheme.typography.titleLarge)
                     Text("%.2f km · %s".format(summary.statistics.distanceMeters / 1000, durationLabel(summary.statistics.durationMillis)))
                     Text(dateLabel(trail.startTime), style = MaterialTheme.typography.bodySmall)
-                    Row {
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
                         TextButton(onClick = { rename = trail }) { Text("Rename") }
                         TextButton(onClick = { onUpdate(trail.copy(favorite = !trail.favorite)) }) { Text(if (trail.favorite) "Unfavorite" else "Favorite") }
                         TextButton(onClick = { deleting = trail }) { Text("Delete") }

@@ -1,6 +1,7 @@
 package com.noise.trailvault.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -31,7 +32,7 @@ fun DetailScreen(trail: Trail, points: List<RoutePoint>, statistics: RouteStatis
         if (trail.notes.isNotBlank()) Text(trail.notes)
         Button(onClick = onExport, enabled = points.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Export GPX") }
         OutlinedButton(onClick = { editing = true }) { Text("Edit activity, tags & notes") }
-        Row {
+        Row(Modifier.horizontalScroll(rememberScrollState())) {
             TextButton(onClick = { rename = true }) { Text("Rename") }
             TextButton(onClick = { onUpdate(trail.copy(favorite = !trail.favorite)) }) { Text(if (trail.favorite) "★ Favorited" else "Favorite") }
             TextButton(onClick = { deleting = true }) { Text("Delete") }

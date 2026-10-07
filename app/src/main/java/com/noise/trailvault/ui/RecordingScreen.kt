@@ -1,6 +1,7 @@
 package com.noise.trailvault.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -17,6 +18,7 @@ fun durationLabel(millis: Long): String {
 }
 @Composable
 fun StatisticsView(statistics: RouteStatistics) {
+    Text("Distance", style = MaterialTheme.typography.labelLarge)
     Text("%.2f km".format(Locale.getDefault(), statistics.distanceMeters / 1000), style = MaterialTheme.typography.headlineLarge)
     Text("Active duration  ${durationLabel(statistics.durationMillis)}")
     Text("Average speed  " + if (statistics.durationMillis > 0) "%.1f km/h".format(Locale.getDefault(), statistics.averageSpeedKmh) else "Unavailable")
@@ -34,7 +36,7 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onStart: (ActivityType) -> Unit
         Text("Record your route. Keep it yours.")
         if (snapshot.trail == null) {
             Text("Choose an activity")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ActivityType.entries.forEach { type ->
                     FilterChip(selected = type == activity, onClick = { activity = type }, label = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) })
                 }
@@ -49,7 +51,7 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onStart: (ActivityType) -> Unit
             MapPanel(snapshot.points, follow)
             Text("Live map shows up to 6,000 recent points. All accepted points are saved.", style = MaterialTheme.typography.bodySmall)
             FilterChip(selected = follow, onClick = { follow = !follow }, label = { Text("Follow position") })
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = if (snapshot.trail.state == RecordingState.PAUSED) onResume else onPause) {
                     Text(if (snapshot.trail.state == RecordingState.PAUSED) "Resume" else "Pause")
                 }

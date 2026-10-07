@@ -43,6 +43,10 @@ class MainActivity : ComponentActivity() {
         val history by app.repository.history.collectAsState()
         var page by rememberSaveable { mutableStateOf("recording") }
         var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+        val completedId by app.completedId.collectAsState()
+        LaunchedEffect(completedId) {
+            completedId?.let { selectedId = it; page = "detail"; app.completedId.value = null }
+        }
         val detail by produceState<Pair<Trail, List<RoutePoint>>?>(null, selectedId, history) {
             value = null
             selectedId?.let { id -> app.perform { value = app.repository.detail(id) } }
@@ -83,7 +87,6 @@ class MainActivity : ComponentActivity() {
                 busy = false
             }
         }
-        val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         fun command(action: String) {
             try {
                 val intent = Intent(this@MainActivity, RecordingService::class.java).setAction(action)
@@ -91,8 +94,16 @@ class MainActivity : ComponentActivity() {
                 startForegroundService(intent)
             } catch (exception: Exception) { app.error.value = "Unable to start recording. Check location permission and try again." }
         }
+        val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { command(pendingAction) }
+        fun continueRecording() {
+            val preferences = getPreferences(MODE_PRIVATE)
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED && !preferences.getBoolean("notification_requested", false)) {
+                preferences.edit().putBoolean("notification_requested", true).apply()
+                notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else command(pendingAction)
+        }
         val location = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            if (LocationPermission.granted(this@MainActivity)) command(pendingAction)
+            if (LocationPermission.granted(this@MainActivity)) continueRecording()
             else app.error.value = "Precise location is required to record a route. You can enable it in app settings."
         }
         BackHandler(page != "recording") {
@@ -128,8 +139,7 @@ class MainActivity : ComponentActivity() {
                 explain = false
                 when {
                     LocationPermission.granted(this@MainActivity) -> {
-                        if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        command(pendingAction)
+                        continueRecording()
                     }
                     LocationPermission.settingsRequired(this@MainActivity) -> LocationPermission.openSettings(this@MainActivity)
                     else -> { LocationPermission.markRequested(this@MainActivity); location.launch(LocationPermission.permissions) }
@@ -142,6 +152,9 @@ class MainActivity : ComponentActivity() {
             confirmButton = { TextButton(onClick = { notice = null }) { Text("OK") } }) }
         error?.let { message -> AlertDialog(onDismissRequest = { app.error.value = null },
             title = { Text("TrailVault") }, text = { Text(message) },
-            confirmButton = { TextButton(onClick = { app.error.value = null }) { Text("OK") } }) }
+            confirmButton = { TextButton(onClick = { app.error.value = null }) { Text("OK") } },
+            dismissButton = { if (!LocationPermission.granted(this@MainActivity)) TextButton(onClick = {
+                app.error.value = null; LocationPermission.openSettings(this@MainActivity)
+            }) { Text("App Settings") } }) }
     }
 }
