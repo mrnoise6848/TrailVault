@@ -12,7 +12,11 @@ class TrailRepository(private val store: TrailStore) {
     suspend fun refresh() { mutable.value = withContext(Dispatchers.IO) { store.history() } }
     suspend fun detail(id: String): Pair<Trail, List<RoutePoint>> = withContext(Dispatchers.IO) {
         val trail = requireNotNull(store.trail(id)) { "Route no longer exists" }
-        trail to store.points(id)
+        trail to store.preview(id)
+    }
+    suspend fun export(id: String, output: java.io.OutputStream) = withContext(Dispatchers.IO) {
+        val trail = requireNotNull(store.trail(id))
+        store.withPoints(id) { Gpx.write(output, trail, it) }
     }
     suspend fun update(trail: Trail) {
         require(trail.name.isNotBlank() && trail.name.length <= 160)

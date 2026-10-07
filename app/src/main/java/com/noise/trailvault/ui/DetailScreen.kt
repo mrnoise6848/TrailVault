@@ -26,7 +26,7 @@ fun DetailScreen(trail: Trail, points: List<RoutePoint>, statistics: RouteStatis
         else MapPanel(points, follow = false)
         Text("Started  ${if (points.any { it.timestamp > 0 }) dateLabel(trail.startTime) else "Unavailable (imported)"}")
         Text("Finished  ${trail.endTime?.let(::dateLabel) ?: "Unavailable"}")
-        Text("${points.size} recorded points")
+        Text("Map preview may be simplified. GPX export preserves every recorded point.")
         if (trail.tags.isNotBlank()) Text("Tags  ${trail.tags}")
         if (trail.notes.isNotBlank()) Text(trail.notes)
         Button(onClick = onExport, enabled = points.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Export GPX") }

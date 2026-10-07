@@ -50,7 +50,9 @@ fun RouteMap(points: List<RoutePoint>, modifier: Modifier = Modifier, follow: Bo
         map.setUseDataConnection(online)
         map.overlays.clear()
         map.overlays.add(CopyrightOverlay(context).apply { setCopyrightNotice("© OpenStreetMap contributors") })
-        points.groupBy { it.segment }.values.forEach { segment ->
+        val stride = ((points.size + 1999) / 2000).coerceAtLeast(1)
+        val display = points.filterIndexed { index, _ -> index % stride == 0 || index == points.lastIndex }
+        display.groupBy { it.segment }.values.forEach { segment ->
             if (segment.size > 1) map.overlays.add(Polyline(map).apply {
                 setPoints(segment.map { GeoPoint(it.latitude, it.longitude) })
                 outlinePaint.color = android.graphics.Color.rgb(18, 116, 88)
@@ -65,7 +67,7 @@ fun RouteMap(points: List<RoutePoint>, modifier: Modifier = Modifier, follow: Bo
             })
             if (follow) map.controller.animateTo(GeoPoint(last.latitude, last.longitude))
             else if (points.size > 1) map.post {
-                if (map.width > 0) map.zoomToBoundingBox(BoundingBox.fromGeoPoints(points.map { GeoPoint(it.latitude, it.longitude) }), false, 48)
+                if (map.width > 0) map.zoomToBoundingBox(BoundingBox.fromGeoPoints(display.map { GeoPoint(it.latitude, it.longitude) }), false, 48)
             }
         }
         map.invalidate()

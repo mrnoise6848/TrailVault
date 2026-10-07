@@ -30,16 +30,17 @@ class TrailStore(context: Context) : SQLiteOpenHelper(context, "trails.db", null
     private fun createStatistics(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS statistics(trail TEXT PRIMARY KEY REFERENCES trails(id) ON DELETE CASCADE, distance REAL NOT NULL, duration INTEGER NOT NULL, average REAL NOT NULL, moving INTEGER, elevation REAL, count INTEGER NOT NULL)")
     }
-    fun complete(trail: Trail, points: List<RoutePoint>) {
+    fun complete(trail: Trail) {
         val db = writableDatabase
         db.beginTransaction()
         try {
             save(trail)
-            val stats = Statistics.calculate(points, trail.activeMillis)
+            val accumulator = accumulator(trail.id)
+            val stats = accumulator.snapshot(trail.activeMillis)
             db.insertWithOnConflict("statistics", null, ContentValues().apply {
                 put("trail", trail.id); put("distance", stats.distanceMeters); put("duration", stats.durationMillis)
                 put("average", stats.averageSpeedKmh); put("moving", stats.movingMillis)
-                put("elevation", stats.elevationGainMeters); put("count", points.size)
+                put("elevation", stats.elevationGainMeters); put("count", accumulator.count)
             }, SQLiteDatabase.CONFLICT_REPLACE)
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
@@ -52,8 +53,8 @@ class TrailStore(context: Context) : SQLiteOpenHelper(context, "trails.db", null
         buildList { while (c.moveToNext()) {
             val trail = readTrail(c)
             if (c.isNull(c.getColumnIndexOrThrow("distance"))) {
-                val points = points(trail.id)
-                add(TrackSummary(trail, Statistics.calculate(points, trail.activeMillis), points.size))
+                val accumulator = accumulator(trail.id)
+                add(TrackSummary(trail, accumulator.snapshot(trail.activeMillis), accumulator.count))
             } else add(TrackSummary(trail, RouteStatistics(c.double("distance"), c.long("duration"), c.double("average"),
                 c.optional("moving")?.toLong(), c.optional("elevation")), c.int("count")))
         } }
@@ -62,7 +63,7 @@ class TrailStore(context: Context) : SQLiteOpenHelper(context, "trails.db", null
     fun importRoute(trail: Trail, points: List<RoutePoint>) {
         val db = writableDatabase
         db.beginTransaction()
-        try { save(trail); points.forEach { append(trail.id, it) }; complete(trail, points); db.setTransactionSuccessful() }
+        try { save(trail); points.forEach { append(trail.id, it) }; complete(trail); db.setTransactionSuccessful() }
         finally { db.endTransaction() }
     }
     fun save(trail: Trail) {
@@ -85,10 +86,21 @@ class TrailStore(context: Context) : SQLiteOpenHelper(context, "trails.db", null
     fun active(): Trail? = readableDatabase.rawQuery("SELECT * FROM trails WHERE state != 'IDLE' LIMIT 1", null).use {
         if (it.moveToFirst()) readTrail(it) else null
     }
-    fun points(id: String): List<RoutePoint> = readableDatabase.query("points", null, "trail=?", arrayOf(id), null, null, "id").use { c ->
-        buildList { while (c.moveToNext()) add(RoutePoint(c.double("lat"), c.double("lon"), c.long("time"),
-            c.optional("altitude"), c.optional("accuracy")?.toFloat(), c.optional("speed")?.toFloat(), c.int("segment"), c.optional("vertical")?.toFloat())) }
+    fun <T> withPoints(id: String, block: (Sequence<RoutePoint>) -> T): T =
+        readableDatabase.query("points", null, "trail=?", arrayOf(id), null, null, "id").use { c ->
+            block(sequence { while (c.moveToNext()) yield(readPoint(c)) })
+        }
+    fun accumulator(id: String) = withPoints(id) { sequence -> StatisticsAccumulator().apply { sequence.forEach(::add) } }
+    fun preview(id: String, maximum: Int = 4000): List<RoutePoint> {
+        val count = readableDatabase.rawQuery("SELECT COUNT(*) FROM points WHERE trail=?", arrayOf(id)).use { it.moveToFirst(); it.getInt(0) }
+        val stride = ((count + maximum - 1) / maximum).coerceAtLeast(1)
+        return withPoints(id) { sequence -> sequence.filterIndexed { index, _ -> index % stride == 0 || index == count - 1 }.toList() }
     }
+    fun recent(id: String): List<RoutePoint> = readableDatabase.query("points", null, "trail=?", arrayOf(id), null, null, "id DESC", "6000").use { c ->
+        buildList { while (c.moveToNext()) add(readPoint(c)) }.reversed()
+    }
+    private fun readPoint(c: Cursor) = RoutePoint(c.double("lat"), c.double("lon"), c.long("time"),
+        c.optional("altitude"), c.optional("accuracy")?.toFloat(), c.optional("speed")?.toFloat(), c.int("segment"), c.optional("vertical")?.toFloat())
     private fun readTrail(c: Cursor) = Trail(c.string("id"), c.string("name"), c.long("created"), c.long("start"),
         c.optional("end")?.toLong(), c.long("active"), ActivityType.valueOf(c.string("activity")),
         c.string("notes"), c.string("tags"), c.int("favorite") != 0, RecordingState.valueOf(c.string("state")))

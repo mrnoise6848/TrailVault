@@ -47,6 +47,7 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onStart: (ActivityType) -> Unit
             snapshot.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (snapshot.points.isEmpty()) Text("Waiting for GPS. Move outdoors for a better signal.")
             MapPanel(snapshot.points, follow)
+            Text("Live map shows up to 6,000 recent points. All accepted points are saved.", style = MaterialTheme.typography.bodySmall)
             FilterChip(selected = follow, onClick = { follow = !follow }, label = { Text("Follow position") })
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = if (snapshot.trail.state == RecordingState.PAUSED) onResume else onPause) {

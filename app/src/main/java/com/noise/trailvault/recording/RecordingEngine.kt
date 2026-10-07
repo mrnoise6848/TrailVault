@@ -23,6 +23,7 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
     val snapshot = mutable.asStateFlow()
     private var startedElapsed = 0L
     private var segment = 0
+    private var accumulator = StatisticsAccumulator()
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) { scope.launch { accept(location) } }
         override fun onProviderDisabled(provider: String) { mutable.value = mutable.value.copy(message = "GPS is unavailable. Enable location services; your route is retained.") }
@@ -32,9 +33,9 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         if (mutable.value.trail != null) return@withLock
         val recovered = withContext(Dispatchers.IO) { store.active() } ?: return@withLock
         val paused = recovered.copy(state = RecordingState.PAUSED)
-        val points = withContext(Dispatchers.IO) { store.save(paused); store.points(paused.id) }
+        val points = withContext(Dispatchers.IO) { store.save(paused); accumulator = store.accumulator(paused.id); store.recent(paused.id) }
         segment = (points.maxOfOrNull { it.segment } ?: 0) + 1
-        mutable.value = RecordingSnapshot(paused, points, Statistics.calculate(points, paused.activeMillis), message = "Recovered route is paused. Resume when ready.")
+        mutable.value = RecordingSnapshot(paused, points, accumulator.snapshot(paused.activeMillis), message = "Recovered route is paused. Resume when ready.")
     }
     suspend fun checkpoint() = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
@@ -42,7 +43,7 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         withContext(Dispatchers.IO) { store.save(updated) }
         startedElapsed = SystemClock.elapsedRealtime()
         mutable.value = mutable.value.copy(trail = updated,
-            statistics = Statistics.calculate(mutable.value.points, updated.activeMillis))
+            statistics = accumulator.snapshot(updated.activeMillis))
     }
     suspend fun start(activity: ActivityType = ActivityType.WALKING) = mutex.withLock {
         if (mutable.value.trail != null) return@withLock
@@ -50,6 +51,7 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         val trail = Trail(name = "Route ${java.time.LocalDate.now()}", activity = activity, state = RecordingState.RECORDING)
         withContext(Dispatchers.IO) { check(store.active() == null) { "Recover the existing route first." }; store.save(trail) }
         segment = 0
+        accumulator = StatisticsAccumulator()
         mutable.value = RecordingSnapshot(trail)
         startedElapsed = SystemClock.elapsedRealtime()
         subscribe()
@@ -77,7 +79,7 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         val trail = mutable.value.trail ?: return@withLock
         manager.removeUpdates(listener)
         withContext(Dispatchers.IO) { store.complete(trail.copy(state = RecordingState.IDLE,
-            activeMillis = elapsed(trail), endTime = System.currentTimeMillis()), store.points(trail.id)) }
+            activeMillis = elapsed(trail), endTime = System.currentTimeMillis())) }
         mutable.value = RecordingSnapshot()
     }
     private suspend fun accept(location: Location) = mutex.withLock {
@@ -96,9 +98,10 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
             if (location.hasSpeed() && location.speed.isFinite() && location.speed >= 0) location.speed else null, segment,
             if (location.hasVerticalAccuracy() && location.verticalAccuracyMeters.isFinite() && location.verticalAccuracyMeters >= 0) location.verticalAccuracyMeters else null)
         withContext(Dispatchers.IO) { store.append(trail.id, point) }
-        val points = mutable.value.points + point
+        accumulator.add(point)
+        val points = (mutable.value.points + point).takeLast(6000)
         mutable.value = mutable.value.copy(points = points,
-            statistics = Statistics.calculate(points, elapsed(trail)), message = null)
+            statistics = accumulator.snapshot(elapsed(trail)), message = null)
     }
     private fun elapsed(trail: Trail) = trail.activeMillis +
         if (trail.state == RecordingState.RECORDING) (SystemClock.elapsedRealtime() - startedElapsed).coerceAtLeast(0) else 0L

@@ -18,8 +18,9 @@ object Gpx {
         val date = DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(trail.startTime))
         return "${name}_${date}.gpx"
     }
-    fun write(output: OutputStream, trail: Trail, points: List<RoutePoint>) {
-        require(points.isNotEmpty()) { "Route contains no GPS points" }
+    fun write(output: OutputStream, trail: Trail, points: Sequence<RoutePoint>) {
+        val iterator = points.iterator()
+        require(iterator.hasNext()) { "Route contains no GPS points" }
         val xml = Xml.newSerializer()
         xml.setOutput(output, "UTF-8")
         xml.startDocument("UTF-8", true)
@@ -40,7 +41,7 @@ object Gpx {
         if (trail.tags.isNotBlank()) xml.startTag(TV, "tags").text(trail.tags).endTag(TV, "tags")
         xml.endTag(NS, "extensions")
         var segment: Int? = null
-        points.forEach { point ->
+        iterator.forEach { point ->
             if (segment != point.segment) {
                 if (segment != null) xml.endTag(NS, "trkseg")
                 xml.startTag(NS, "trkseg")

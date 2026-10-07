@@ -49,10 +49,9 @@ class MainActivity : ComponentActivity() {
             exportId = null
             if (uri != null && id != null) app.scope.launch {
                 app.perform {
-                    val route = app.repository.detail(id)
                     withContext(Dispatchers.IO) {
                         requireNotNull(contentResolver.openOutputStream(uri, "wt")) { "Cannot open destination" }.use {
-                            Gpx.write(it, route.first, route.second)
+                            app.repository.export(id, it)
                         }
                     }
                 }
