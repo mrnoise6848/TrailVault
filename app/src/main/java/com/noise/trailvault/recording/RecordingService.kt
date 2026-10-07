@@ -20,15 +20,36 @@ class RecordingService : Service() {
             while (isActive) {
                 delay(5000)
                 if (app.engine.snapshot.value.trail != null) {
-                    app.perform { app.engine.checkpoint() }
+                    if (!LocationPermission.granted(this@RecordingService)) {
+                        app.engine.interrupt("Location permission was revoked. Route paused; restore access in app settings.")
+                        stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); break
+                    }
+                    if (!app.perform { app.engine.checkpoint() }) {
+                        app.engine.interrupt("Recording paused because the checkpoint could not be saved. Free storage and retry.")
+                        stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); break
+                    }
                     getSystemService(NotificationManager::class.java).notify(7, notification())
                 }
             }
         }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!LocationPermission.granted(this)) { stopSelf(); return START_NOT_STICKY }
-        startForeground(7, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        if (!LocationPermission.granted(this)) {
+            app.scope.launch {
+                app.perform {
+                    app.engine.recover()
+                    app.engine.pause()
+                    if (intent?.action == "FINISH") { app.engine.finish(); app.repository.refresh() }
+                }
+                app.error.value = "Precise location permission is unavailable. Your route is retained. Restore access in app settings to resume."
+            }
+            stopSelf(); return START_NOT_STICKY
+        }
+        try { startForeground(7, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) }
+        catch (error: Exception) {
+            app.scope.launch { app.engine.interrupt("Unable to start background recording. Reopen TrailVault and restore location access.") }
+            stopSelf(); return START_NOT_STICKY
+        }
         scope.launch {
             val ok = app.perform {
                 app.engine.recover()
@@ -39,6 +60,7 @@ class RecordingService : Service() {
                     "FINISH" -> { app.engine.finish(); app.repository.refresh() }
                 }
             }
+            if (!ok) app.engine.interrupt("Recording paused after an operation failed. Your route is retained; check storage and permissions.")
             if (!ok || app.engine.snapshot.value.trail == null) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
         }
         return START_NOT_STICKY
@@ -56,5 +78,11 @@ class RecordingService : Service() {
             .addAction(Notification.Action.Builder(null, if (paused) "Open to resume" else "Pause", if (paused) open else pause).build())
             .setContentIntent(open).setOngoing(true).build()
     }
-    override fun onDestroy() { app.engine.close(); scope.cancel(); super.onDestroy() }
+    override fun onDestroy() {
+        app.engine.close()
+        scope.cancel()
+        if (app.engine.snapshot.value.trail?.state == RecordingState.RECORDING)
+            app.scope.launch { app.perform { app.engine.pause() } }
+        super.onDestroy()
+    }
 }

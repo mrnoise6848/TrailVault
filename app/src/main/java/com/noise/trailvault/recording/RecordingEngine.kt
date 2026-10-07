@@ -16,16 +16,20 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class RecordingEngine(private val context: Context, private val store: TrailStore,
-    private val scope: CoroutineScope) {
+    private val scope: CoroutineScope, private val reportError: (String) -> Unit) {
     private val manager = context.getSystemService(LocationManager::class.java)
     private val mutex = Mutex()
     private val mutable = MutableStateFlow(RecordingSnapshot())
     val snapshot = mutable.asStateFlow()
     private var startedElapsed = 0L
+    private var fixStartNanos = 0L
     private var segment = 0
     private var accumulator = StatisticsAccumulator()
     private val listener = object : LocationListener {
-        override fun onLocationChanged(location: Location) { scope.launch { accept(location) } }
+        override fun onLocationChanged(location: Location) { scope.launch {
+            try { accept(location) } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { interrupt("Recording paused: unable to store a GPS point. Check available storage and permissions, then retry.") }
+        } }
         override fun onProviderDisabled(provider: String) { mutable.value = mutable.value.copy(message = "GPS is unavailable. Enable location services; your route is retained.") }
         override fun onProviderEnabled(provider: String) { mutable.value = mutable.value.copy(message = null) }
     }
@@ -36,6 +40,18 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         val points = withContext(Dispatchers.IO) { store.save(paused); accumulator = store.accumulator(paused.id); store.recent(paused.id) }
         segment = (points.maxOfOrNull { it.segment } ?: 0) + 1
         mutable.value = RecordingSnapshot(paused, points, accumulator.snapshot(paused.activeMillis), message = "Recovered route is paused. Resume when ready.")
+    }
+    suspend fun interrupt(message: String) = mutex.withLock {
+        manager.removeUpdates(listener)
+        val trail = mutable.value.trail
+        if (trail != null) {
+            val paused = trail.copy(state = RecordingState.PAUSED, activeMillis = elapsed(trail))
+            mutable.value = mutable.value.copy(trail = paused, statistics = accumulator.snapshot(paused.activeMillis), message = message)
+            try { withContext(Dispatchers.IO) { store.save(paused) } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* The prior durable checkpoint and accepted points remain available. */ }
+        }
+        reportError(message)
     }
     suspend fun checkpoint() = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
@@ -61,8 +77,8 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         if (trail.state != RecordingState.RECORDING) return@withLock
         manager.removeUpdates(listener)
         val paused = trail.copy(state = RecordingState.PAUSED, activeMillis = elapsed(trail))
+        mutable.value = mutable.value.copy(trail = paused, statistics = accumulator.snapshot(paused.activeMillis))
         withContext(Dispatchers.IO) { store.save(paused) }
-        mutable.value = mutable.value.copy(trail = paused)
     }
     suspend fun resume() = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
@@ -78,13 +94,15 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
     suspend fun finish() = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
         manager.removeUpdates(listener)
-        withContext(Dispatchers.IO) { store.complete(trail.copy(state = RecordingState.IDLE,
-            activeMillis = elapsed(trail), endTime = System.currentTimeMillis())) }
+        val paused = trail.copy(state = RecordingState.PAUSED, activeMillis = elapsed(trail))
+        mutable.value = mutable.value.copy(trail = paused, statistics = accumulator.snapshot(paused.activeMillis))
+        withContext(Dispatchers.IO) { store.complete(paused.copy(state = RecordingState.IDLE,
+            endTime = System.currentTimeMillis())) }
         mutable.value = RecordingSnapshot()
     }
     private suspend fun accept(location: Location) = mutex.withLock {
         val trail = mutable.value.trail ?: return@withLock
-        if (trail.state != RecordingState.RECORDING) return@withLock
+        if (trail.state != RecordingState.RECORDING || location.elapsedRealtimeNanos < fixStartNanos) return@withLock
         val previous = mutable.value.points.lastOrNull()?.takeIf { it.segment == segment }
         val rejection = LocationQuality.rejection(location, previous)
         if (rejection != null) {
@@ -107,12 +125,11 @@ class RecordingEngine(private val context: Context, private val store: TrailStor
         if (trail.state == RecordingState.RECORDING) (SystemClock.elapsedRealtime() - startedElapsed).coerceAtLeast(0) else 0L
     @SuppressLint("MissingPermission")
     private fun subscribe() {
-        try {
-            manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000L, 3f, listener, Looper.getMainLooper())
-        } catch (error: Exception) {
-            manager.removeUpdates(listener)
-            mutable.value = mutable.value.copy(message = "Location unavailable: ${error.javaClass.simpleName}. Pause or enable GPS.")
-        }
+        fixStartNanos = SystemClock.elapsedRealtimeNanos()
+        check(LocationPermission.granted(context)) { "Location permission revoked" }
+        if (!manager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+            mutable.value = mutable.value.copy(message = "GPS is disabled. Enable location services to receive fixes.")
+        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000L, 3f, listener, Looper.getMainLooper())
     }
     fun close() { manager.removeUpdates(listener) }
 }

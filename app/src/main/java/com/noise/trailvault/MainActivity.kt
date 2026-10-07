@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -29,6 +30,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent { TrailVaultTheme { TrailRoot() } }
     }
+    override fun onResume() {
+        super.onResume()
+        val app = application as TrailApplication
+        if (!LocationPermission.granted(this) && app.engine.snapshot.value.trail != null)
+            app.scope.launch { app.perform { app.engine.pause() } }
+    }
     @Composable
     private fun TrailRoot() {
         val app = application as TrailApplication
@@ -42,30 +49,38 @@ class MainActivity : ComponentActivity() {
         }
         val error by app.error.collectAsState()
         var explain by remember { mutableStateOf(false) }
-        var requestedActivity by remember { mutableStateOf(ActivityType.WALKING) }
+        var pendingAction by rememberSaveable { mutableStateOf("START") }
+        var busy by remember { mutableStateOf(false) }
+        var notice by remember { mutableStateOf<String?>(null) }
+        var requestedActivity by rememberSaveable { mutableStateOf(ActivityType.WALKING) }
         var exportId by rememberSaveable { mutableStateOf<String?>(null) }
         val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri ->
             val id = exportId
             exportId = null
             if (uri != null && id != null) app.scope.launch {
-                app.perform {
+                busy = true
+                val success = app.perform {
                     withContext(Dispatchers.IO) {
-                        requireNotNull(contentResolver.openOutputStream(uri, "wt")) { "Cannot open destination" }.use {
+                        requireNotNull(app.contentResolver.openOutputStream(uri, "wt")) { "Cannot open destination" }.use {
                             app.repository.export(id, it)
                         }
                     }
                 }
+                busy = false
+                if (success) notice = "GPX exported successfully."
             }
         }
         val importGpx = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) app.scope.launch {
+                busy = true
                 app.perform {
                     val imported = withContext(Dispatchers.IO) {
-                        requireNotNull(contentResolver.openInputStream(uri)) { "Cannot open GPX" }.use(Gpx::read)
+                        requireNotNull(app.contentResolver.openInputStream(uri)) { "Cannot open GPX" }.use(Gpx::read)
                     }
                     app.repository.importRoute(imported.trail, imported.points)
                     selectedId = imported.trail.id; page = "detail"
                 }
+                busy = false
             }
         }
         val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -77,8 +92,11 @@ class MainActivity : ComponentActivity() {
             } catch (exception: Exception) { app.error.value = "Unable to start recording. Check location permission and try again." }
         }
         val location = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            if (LocationPermission.granted(this@MainActivity)) command("START")
+            if (LocationPermission.granted(this@MainActivity)) command(pendingAction)
             else app.error.value = "Precise location is required to record a route. You can enable it in app settings."
+        }
+        BackHandler(page != "recording") {
+            if (page == "detail") { selectedId = null; page = "history" } else page = "recording"
         }
         Scaffold { padding ->
             Box(Modifier.padding(padding)) {
@@ -98,8 +116,8 @@ class MainActivity : ComponentActivity() {
                         onDelete = { app.scope.launch { if (app.perform { app.repository.delete(current.first.id) }) { selectedId = null; page = "history" } } },
                         onExport = { exportId = current.first.id; export.launch(Gpx.filename(current.first)) })
                 } else RecordingScreen(snapshot,
-                    onStart = { requestedActivity = it; explain = true },
-                    onPause = { command("PAUSE") }, onResume = { command("RESUME") },
+                    onStart = { pendingAction = "START"; requestedActivity = it; explain = true },
+                    onPause = { command("PAUSE") }, onResume = { if (LocationPermission.granted(this@MainActivity)) command("RESUME") else { pendingAction = "RESUME"; explain = true } },
                     onFinish = { command("FINISH") }, onHistory = { page = "history"; app.scope.launch { app.perform { app.repository.refresh() } } })
             }
         }
@@ -111,13 +129,17 @@ class MainActivity : ComponentActivity() {
                 when {
                     LocationPermission.granted(this@MainActivity) -> {
                         if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        command("START")
+                        command(pendingAction)
                     }
                     LocationPermission.settingsRequired(this@MainActivity) -> LocationPermission.openSettings(this@MainActivity)
                     else -> { LocationPermission.markRequested(this@MainActivity); location.launch(LocationPermission.permissions) }
                 }
             }) { Text(if (LocationPermission.settingsRequired(this@MainActivity)) "Open Settings" else "Continue") } },
             dismissButton = { TextButton(onClick = { explain = false }) { Text("Cancel") } })
+        if (busy) AlertDialog(onDismissRequest = {}, title = { Text("Processing GPX…") },
+            text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
+        notice?.let { message -> AlertDialog(onDismissRequest = { notice = null }, text = { Text(message) },
+            confirmButton = { TextButton(onClick = { notice = null }) { Text("OK") } }) }
         error?.let { message -> AlertDialog(onDismissRequest = { app.error.value = null },
             title = { Text("TrailVault") }, text = { Text(message) },
             confirmButton = { TextButton(onClick = { app.error.value = null }) { Text("OK") } }) }
